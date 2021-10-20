@@ -6,9 +6,10 @@ from pprint import pprint
 class PhotoBackup:
     url = 'https://api.vk.com/method/'
 
-    def __init__(self, user_id, vk_token):
+    def __init__(self, user_id, ya_token):
         self.id = user_id
-        self.vk_token = vk_token
+        # self.vk_token = vk_token
+        self.ya_token = ya_token
 
     def backup(self):
         file_list = self.vk_get_photos()['response']['items']
@@ -26,19 +27,19 @@ class PhotoBackup:
             height = photo['sizes'][-1]['height']
             width = photo['sizes'][-1]['width']
             files_for_backup[name] = {
-                'max_size_url': max_size_url,
+                'url': max_size_url,
                 'size': f'{height}x{width}'
             }
-
-        response = files_for_backup
+        response = self.yandex_upload(files_for_backup)
         return response
 
     def vk_get_photos(self):
+        vk_token = '9b1eb309d15d58b19d06f4808e0ab42bef5fa1bdec1032e442cc7e6979148aa9c444e043e856b75e389b3'
         vk_api_version = '5.131'
         get_photos_url = self.url + 'photos.get/'
         params = {
             'owner_id': self.id,
-            'access_token': self.vk_token,
+            'access_token': vk_token,
             'v': vk_api_version,
             'album_id': 'profile',
             'extended': 1
@@ -46,25 +47,27 @@ class PhotoBackup:
         response = requests.get(get_photos_url, params=params)
         return response.json()
 
-    def yandex_upload(self, path_to_file, file_name):
-        headers = {'Content-Type': 'application/json', 'Authorization': 'OAuth {}'.format(ya_token)}
-        upload_url = "https://cloud-api.yandex.net/v1/disk/resources/upload"
-        params = {
-            "path": path_to_file,
-            "overwrite": "true"
-        }
-        response = requests.get(url=upload_url, headers=headers, params=params)
-        href = response.json()['href']
-        response = requests.put(href, data=open(file_name, 'rb'))
-        response.raise_for_status()
-        if response.status_code == 201:
-            print("Success")
+    def yandex_upload(self, files_for_backup):
+        for file in files_for_backup.items():
+            pprint(file)
+            path_to_file = f'Photo_backup/{file[0]}'
+            file_url = file[1]['url']
+            headers = {'Content-Type': 'application/json', 'Authorization': 'OAuth {}'.format(ya_token)}
+            upload_url = "https://cloud-api.yandex.net/v1/disk/resources/upload"
+            params = {
+                "path": path_to_file,
+                'url': file_url
+            }
+            response = requests.post(url=upload_url, headers=headers, params=params)
+            response.raise_for_status()
+            if response.status_code == 202:
+                print("Success")
+            else:
+                return 'Failed'
 
 
 if __name__ == '__main__':
-    vk_token = '9b1eb309d15d58b19d06f4808e0ab42bef5fa1bdec1032e442cc7e6979148aa9c444e043e856b75e389b3'
     ya_token = 'AQAAAAARW52bAADLWynE0230hkBqpfooMmOJziU'
     vk_id = '139122829'
-    vk_photos = PhotoBackup(vk_id, vk_token)
-    # pprint(vk_photos.vk_get_photos())
+    vk_photos = PhotoBackup(vk_id, ya_token)
     pprint(vk_photos.backup())
