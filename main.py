@@ -1,10 +1,12 @@
 import datetime
 import requests
 from pprint import pprint
+import json
+from progress.bar import IncrementalBar
+import webbrowser
 
 
 class PhotoBackup:
-    url = 'https://api.vk.com/method/'
 
     def __init__(self, user_id, ya_token):
         self.id = user_id
@@ -12,9 +14,12 @@ class PhotoBackup:
         self.ya_token = ya_token
 
     def backup(self):
-        file_list = self.vk_get_photos()['response']['items']
+        global_bar = IncrementalBar('Progress', max=4) # 4- _vk_get_photos, формирование files_for_backup, _yandex_upload, сериализация json_response
+        file_list = self._vk_get_photos()['response']['items']
+        global_bar.next()
         # pprint(file_list)
         files_for_backup = {}
+        json_response = []
         for photo in file_list:
             # pprint(photo)
             if photo['likes']['count'] in files_for_backup:
@@ -30,13 +35,21 @@ class PhotoBackup:
                 'url': max_size_url,
                 'size': f'{height}x{width}'
             }
-        response = self.yandex_upload(files_for_backup)
-        return response
+            json_response.append({"file_name": name, "size": f'{height}x{width}'})
+        global_bar.next()
+        self._yandex_upload(files_for_backup)
+        global_bar.next()
+        with open("data_file.json", "w") as write_file:
+            json.dump(json_response, write_file)
+        global_bar.next()
+        global_bar.finish()
+        return webbrowser.open_new_tab('https://disk.yandex.ru/client/disk/Photo_backup')
 
-    def vk_get_photos(self):
+    def _vk_get_photos(self):
+        vk_url = 'https://api.vk.com/method/'
         vk_token = '9b1eb309d15d58b19d06f4808e0ab42bef5fa1bdec1032e442cc7e6979148aa9c444e043e856b75e389b3'
         vk_api_version = '5.131'
-        get_photos_url = self.url + 'photos.get/'
+        get_photos_url = vk_url + 'photos.get/'
         params = {
             'owner_id': self.id,
             'access_token': vk_token,
@@ -47,9 +60,10 @@ class PhotoBackup:
         response = requests.get(get_photos_url, params=params)
         return response.json()
 
-    def yandex_upload(self, files_for_backup):
+    def _yandex_upload(self, files_for_backup):
+        upload_bar = IncrementalBar('Uploading photos', max=len(files_for_backup.items()))
         for file in files_for_backup.items():
-            pprint(file)
+            # pprint(file)
             path_to_file = f'Photo_backup/{file[0]}'
             file_url = file[1]['url']
             headers = {'Content-Type': 'application/json', 'Authorization': 'OAuth {}'.format(ya_token)}
@@ -58,12 +72,13 @@ class PhotoBackup:
                 "path": path_to_file,
                 'url': file_url
             }
-            response = requests.post(url=upload_url, headers=headers, params=params)
-            response.raise_for_status()
-            if response.status_code == 202:
-                print("Success")
-            else:
+            upload = requests.post(url=upload_url, headers=headers, params=params)
+            upload.raise_for_status()
+            if upload.status_code != 202:
                 return 'Failed'
+            upload_bar.next()
+        upload_bar.finish()
+        return "Success"
 
 
 if __name__ == '__main__':
